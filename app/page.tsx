@@ -40,16 +40,38 @@ async function imageUrlToDataUrl(url: string): Promise<string> {
 
     const blob = await response.blob()
 
-    return new Promise((resolve, reject) => {
+    const dataUrl = await new Promise<string>((resolve, reject) => {
       const reader = new FileReader()
       reader.onloadend = () => resolve(reader.result as string)
       reader.onerror = reject
       reader.readAsDataURL(blob)
     })
+
+    // Preload the image into browser cache
+    await new Promise<void>((resolve, reject) => {
+      const img = new Image()
+      img.onload = () => resolve()
+      img.onerror = reject
+      img.src = dataUrl
+    })
+
+    return dataUrl
   } catch (err) {
     console.error("Failed to convert image to data URL:", err)
     return url
   }
+}
+
+function waitForImages(element: HTMLElement): Promise<void> {
+  const images = element.querySelectorAll("img")
+  const promises = Array.from(images).map((img) => {
+    if (img.complete) return Promise.resolve()
+    return new Promise<void>((resolve) => {
+      img.onload = () => resolve()
+      img.onerror = () => resolve()
+    })
+  })
+  return Promise.all(promises).then(() => {})
 }
 
 export default function Home() {
@@ -104,6 +126,9 @@ export default function Home() {
     setExporting(true)
 
     try {
+      // Wait for all images in the card to be fully loaded
+      await waitForImages(cardRef.current)
+
       const backgroundColor = theme === "dark" ? "#111827" : theme === "gradient" ? "#7c3aed" : "#ffffff"
       const dataUrl = await toPng(cardRef.current, {
         cacheBust: true,
